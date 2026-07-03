@@ -369,7 +369,11 @@ jobs:
           # ==========================================
           # 自选股配置
           # ==========================================
-          # 避免直接写入 STOCK_LIST，保留同名 Environment variables 的 runner 环境值。
+          # STOCK_LIST 读取优先级：
+          # 1. Repository Variable (Settings → Secrets and variables → Actions → Variables)
+          # 2. Repository Secret
+          # 3. Environment Variable（由同名 Environment 注入）
+          # 任一位置配置即可生效。
           STOCK_LIST_CONFIG: ${{ vars.STOCK_LIST || secrets.STOCK_LIST }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           MARKET_REVIEW_COLOR_SCHEME: ${{ vars.MARKET_REVIEW_COLOR_SCHEME || secrets.MARKET_REVIEW_COLOR_SCHEME || 'green_up' }}
@@ -398,14 +402,30 @@ jobs:
           REALTIME_SOURCE_PRIORITY: ${{ vars.REALTIME_SOURCE_PRIORITY || 'tencent,akshare_sina,efinance,akshare_em' }}
           
         run: |
-          # 解析自选股配置：
-          # 1. Repository/Environment secrets 或 Repository variables（STOCK_LIST_CONFIG）
-          # 2. 同名 Environment variables 注入的 runner 环境变量（STOCK_LIST）
-          # 3. 最小默认值
+          # ═══════════════════════════════════════════
+          # 解析自选股配置
+          # ═══════════════════════════════════════════
           if [ -n "${STOCK_LIST_CONFIG:-}" ]; then
             export STOCK_LIST="$STOCK_LIST_CONFIG"
-          elif [ -z "${STOCK_LIST:-}" ]; then
-            export STOCK_LIST="600519"
+            echo "✅ 自选股来源: GitHub Repository Variables/Secrets"
+          elif [ -n "${STOCK_LIST:-}" ]; then
+            echo "✅ 自选股来源: GitHub Environment Variables（同名 Environment）"
+          else
+            # 未配置任何 STOCK_LIST → 检查是否仓库里有 .env 文件
+            if [ -f .env ] && grep -q "^STOCK_LIST=" .env 2>/dev/null; then
+              export STOCK_LIST="$(grep '^STOCK_LIST=' .env | head -1 | cut -d= -f2-)"
+              echo "✅ 自选股来源: 仓库 .env 文件"
+            else
+              export STOCK_LIST="600519"
+              echo "⚠️  ╔══════════════════════════════════════════════╗"
+              echo "⚠️  ║  STOCK_LIST 未配置！已使用默认值：600519     ║"
+              echo "⚠️  ║  请前往以下位置配置你的自选股：               ║"
+              echo "⚠️  ║  Settings → Secrets and variables → Actions  ║"
+              echo "⚠️  ║  → Variables → New repository variable       ║"
+              echo "⚠️  ║  Name:  STOCK_LIST                           ║"
+              echo "⚠️  ║  Value: 600519,000001,300750,...             ║"
+              echo "⚠️  ╚══════════════════════════════════════════════╝"
+            fi
           fi
 
           # 处理 LITELLM YAML 配置文件
